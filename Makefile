@@ -14,5 +14,5 @@ iimp:lex.yy.c iimp.tab.c iimp.tab.h
 	$(CC) $(CFLAGS) -o iimp iimp.tab.c lex.yy.c
 
 clean:
-	rm *~ *# *.o *.c
+	rm *~ *# *.o 
 	rm iimp iimp.tab.c iimp.tab.h lex.yy.c
