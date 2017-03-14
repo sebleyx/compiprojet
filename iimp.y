@@ -4,56 +4,13 @@
   #include <string.h>
   #include <stdarg.h>
   #include "utils.h"
+  #include "environ.c"
   
-  
+  #define YYDEBUG 1
+  extern int yyerror(char*);
+  extern int yylex();
+  extern int ex(ENV *e,arbre ab);
 
-  extern void yyerror(char* s);
- 
-  
-%}
-
-%union {
-    int val;
-    char* var;
-    node node;
-}
-
-%token Af Sk Se If Th El Wh Do Pl Mo Mu
-%token <var> V
-%token <val> I
-%start Start
-%type <node> E T F C0 C
-%%
-
-Start : C
-
- E: E Pl T   {$$ = new_arbre(TYPE_OPR,"Pl",eval(Pl,$1,$3),$1,$3,NULL);}
-  | E Mo T   {$$ = new_arbre(TYPE_OPR,"Mo",eval(Mo,$1,$3),$1,$3,NULL);}
-  | T        {$$ = $1;}
-  ;
-
- T: T Mu F   {$$ = new_arbre(TYPE_OPR,"Mu",eval(Mu,$1,$3),$1,$3,NULL);}
-  | F        {$$ = $1;}
-  ;
-
- F: '(' E ')'  {$$ = $2;}
-  | I          {$$ = new_arbre(TYPE_CONST,"I",$1,NULL);}
-  | V          {$$ = new_arbre(TYPE_VAR,$1,NULL,NULL);}
-  ;
-
- C0 : V Af E    {$$ = new_arbre(TYPE_OPR,"Af",NULL,$1,$3,NULL);}
-  | '(' C ')'  {$$ = $2;}
-  | Sk         {$$=new_arbre(TYPE_OPR,"Sk",NULL,NULL);}
-  | Se	{$$=new_arbre(TYPE_OPR,"Se",NULL, NULL);} 
-  | If E Th C El C0    {$$=new_arbre(TYPE_OPR,"If",NULL, $2, $4, $6,NULL);}
-  | Wh E Do C0         {$$= new_arbre(TYPE_OPR, "Wh",$2,$4,NULL);}
-  ;
-  
-  C : C Se C0	{$$ = new_arbre(TYPE_OPR,"Se",NULL,$1,$3,NULL);}
-    | C0	{$$ = $1;}
-
-
-%%
 
   
 /**
@@ -66,7 +23,7 @@ Start : C
 \return un arbre initialisé selon le type de noeud 
 \remarks aucune 
 */
-arbre new_arbre(int type,const char *name, int value,  ...){
+  arbre new_arbre(int type, const char *name, int value,  ...){
     arbre tmp;
     int i;
     int nb_args;
@@ -74,7 +31,6 @@ arbre new_arbre(int type,const char *name, int value,  ...){
     /*allocation mémoire de l'arbre */
     tmp = (arbre) malloc(sizeof(node));
     
-    tmp->var = malloc(MAXIDENT*sizeof(char));
     
     tmp->degree=0;
     tmp->type = type;
@@ -88,27 +44,73 @@ arbre new_arbre(int type,const char *name, int value,  ...){
 	nb_args++;
       va_end(argp);
       tmp->degree = nb_args;
-      if (temp->degre !=0) {
-	tmp->child=(arbre *) calloc(tmp->degre, sizeof(arbre));
-	va_start(argp,name);
-	for(i=0; i<n_args; i++) {
+      if (tmp->degree !=0) {
+	tmp->child=(arbre *)calloc(tmp->degree, sizeof(arbre));
+	va_start(argp,value);
+	for(i=0; i<nb_args; i++) {
 	  tmp->child[i]=va_arg(argp, arbre) ;
 	}
 	va_end(argp);
       }
     }
     return tmp;
+  }
+  
+%}
+
+%union {
+    int val;
+    char* var;
+    arbre nodes;
 }
 
-void parcours(arbre ab, void (*Pre) (arbre), void (*Post) (arbre)){
+%token Af Sk Se If Th El Wh Do Pl Mo Mu
+%token <var> V
+%token <val> I
+%start Start
+%type <nodes> E T F C0 C
+%%
+
+Start : C {ENV e = Envalloc(); ex(&e,$1);}
+
+ E: E Pl T   {$$ = new_arbre(TYPE_OPR,"Pl",eval(Pl,$1->value,$3->value),$1,$3,NULL);}
+  | E Mo T   {$$ = new_arbre(TYPE_OPR,"Mo",eval(Mo,$1->value,$3->value),$1,$3,NULL);}
+  | T        {$$ = $1;}
+  ;
+
+ T: T Mu F   {$$ = new_arbre(TYPE_OPR,"Mu",eval(Mu,$1->value,$3->value),$1,$3,NULL);}
+  | F        {$$ = $1;}
+  ;
+
+ F: '(' E ')'  {$$ = $2;}
+  | I          {$$ = new_arbre(TYPE_CONST,"I",$1,NULL);}
+  | V          {$$ = new_arbre(TYPE_VAR,$1,0,NULL);}
+  ;
+
+ C0 : V Af E    {$$ = new_arbre(TYPE_OPR,"Af",0,$1,$3,NULL);}
+  | '(' C ')'  {$$ = $2;}
+  | Sk         {$$=new_arbre(TYPE_OPR,"Sk",0,NULL);}
+  | Se	{$$=new_arbre(TYPE_OPR,"Se",0, NULL);} 
+  | If E Th C El C0    {$$=new_arbre(TYPE_OPR,"If",0, $2, $4, $6,NULL);}
+  | Wh E Do C0         {$$= new_arbre(TYPE_OPR, "Wh",$2->value,$4,NULL);}
+  ;
+  
+  C : C Se C0	{$$ = new_arbre(TYPE_OPR,"Se",0,$1,$3,NULL);}
+    | C0	{$$ = $1;}
+
+
+%%
+
+void parcours(arbre ab, void (*PreFct) (arbre), void (*PostFct) (arbre)){
   int i;
   if (ab==NULL) 
-    return;
+    exit(-1);
   if (PreFct!=NULL) PreFct(ab);
-  for(i=0; i<ab->degre; i++)
-    parcours(ab->child[i],Pre,Post);
-  if (PostFct!=NULL)
-    PostFct(ab);
+  if (ab->type == TYPE_OPR){
+    for(i=0; i<ab->degree; i++)
+      parcours(ab->child[i],PreFct,PostFct);
+    if (PostFct!=NULL)
+      PostFct(ab);
 }
 
 
@@ -130,5 +132,6 @@ void yywrap(){
 }
 
 void main(){
+  yydebug = 0;
   yyparse();
 }
